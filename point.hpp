@@ -9,8 +9,8 @@ struct point {
   pos_type y;
   pos_type z;
 
-  point() {};
-  point(pos_type x, pos_type y, pos_type z) : x(x), y(y), z(z) {};
+  constexpr point() {};
+  constexpr point(pos_type x, pos_type y, pos_type z) : x(x), y(y), z(z) {};
 
   pos_type length_squared() const;
   pos_type length() const;

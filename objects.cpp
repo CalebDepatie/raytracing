@@ -41,6 +41,6 @@ hit plane::intersect(ray r) const {
     .intersect = t>0,
     .depth = t,
     .pos = pos,
-    .normal = this->normal
+    .normal = this->normal.norm()
   };
 }

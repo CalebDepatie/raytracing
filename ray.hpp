@@ -18,4 +18,4 @@ struct ray {
 };
 
 auto rayDir(pos_type fov, pos_type x, pos_type y) -> ray;
-auto rayCast(ray r, const std::vector<object*>& scene, int bounces) -> point;
+auto rayCast(ray r, const std::vector<object*>& scene, int bounces, int& total_rays) -> point;
