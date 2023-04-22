@@ -1,9 +1,7 @@
 #pragma once
 
 #include <vector>
-#include <iostream>
-#include <cstdlib>
-#include <cmath>
+#include <memory>
 
 #include "point.hpp"
 
@@ -18,4 +16,4 @@ struct ray {
 };
 
 auto rayDir(pos_type fov, pos_type x, pos_type y) -> ray;
-auto rayCast(ray r, const std::vector<object*>& scene, int bounces, int& total_rays) -> point;
+auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounces, int& total_rays) -> point;

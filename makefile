@@ -1,14 +1,12 @@
-CC = gcc
 CXX = g++
 
-LINK_FLAGS =
-CXXFLAGS = -Wall -std=c++20 -O3
-CCFLAGS = -Wall -std=c17 -O3
+LINK_FLAGS = -fopenmp
+CXXFLAGS = -Wall -std=c++20 -O3 $(LINK_FLAGS)
 
-all: asmt2
+all: rt
 
-asmt2: main.cpp common.hpp objects.o ray.o point.o
-	$(CXX) $(CXXFLAGS) -o asmt2 main.cpp objects.o point.o ray.o
+rt: main.cpp common.hpp objects.o ray.o point.o
+	$(CXX) $(CXXFLAGS) -o rt main.cpp objects.o point.o ray.o
 
 objects.o: objects.hpp common.hpp objects.cpp
 	$(CXX) $(CXXFLAGS) -c -o objects.o objects.cpp
@@ -20,5 +18,6 @@ point.o: point.hpp common.hpp point.cpp
 	$(CXX) $(CXXFLAGS) -c -o point.o point.cpp
 
 clean:
+	rm rt
 	rm *.o
 	rm *.bmp

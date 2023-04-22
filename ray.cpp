@@ -1,3 +1,7 @@
+#include <iostream>
+#include <cstdlib>
+#include <cmath>
+
 #include "ray.hpp"
 #include "objects.hpp"
 #include "point.hpp"
@@ -19,7 +23,7 @@ auto rayDir(pos_type fov, pos_type x, pos_type y) -> ray {
   );
 }
 
-auto lightRay(point startpos, const std::vector<object*>& scene, int bounces, int& total_rays) -> point {
+auto lightRay(point startpos, const std::vector<std::shared_ptr<object>>& scene, int bounces, int& total_rays) -> point {
   // auto light = point(5,5,30);
   // auto light_ray = ray(
   //   intersection,
@@ -73,8 +77,8 @@ auto lightRay(point startpos, const std::vector<object*>& scene, int bounces, in
 }
 
 // returns colour
-auto rayCast(ray r, const std::vector<object*>& scene, int bounces, int& total_rays) -> point {
-  object* nearest = 0;
+auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounces, int& total_rays) -> point {
+  std::shared_ptr<object> nearest = 0;
   hit nearesthit;
   pos_type depth = 0;
   point colour = point(0.1,0.1,0.2);
