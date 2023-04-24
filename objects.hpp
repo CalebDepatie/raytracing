@@ -44,8 +44,8 @@ public:
 
   constexpr plane(point v, point n, point colour)
     : object(colour), vertex(v), normal(n) {};
-    constexpr plane(point v, point n, point colour, pos_type spec, pos_type dif)
-      : object(colour, spec, dif), vertex(v), normal(n) {};
+  constexpr plane(point v, point n, point colour, pos_type spec, pos_type dif)
+    : object(colour, spec, dif), vertex(v), normal(n) {};
   constexpr ~plane() {};
 
   hit intersect(ray r) const;

@@ -9,7 +9,7 @@ struct point {
   pos_type y;
   pos_type z;
 
-  constexpr point() {};
+  constexpr point() : x(0.0), y(0.0), z(0.0) {};
   constexpr point(pos_type x, pos_type y, pos_type z) : x(x), y(y), z(z) {};
 
   pos_type length_squared() const;

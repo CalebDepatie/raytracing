@@ -23,12 +23,7 @@ auto rayDir(pos_type fov, pos_type x, pos_type y) -> ray {
   );
 }
 
-auto lightRay(point startpos, const std::vector<std::shared_ptr<object>>& scene, int bounces, int& total_rays) -> point {
-  // auto light = point(5,5,30);
-  // auto light_ray = ray(
-  //   intersection,
-  //   (intersection - light).norm()
-  // );
+auto lightRay(point startpos, const std::vector<std::shared_ptr<object>> scene, int bounces) -> point {
   point colour = point(0,0,0);
 
   if constexpr(TYPE==distributed) {
@@ -68,17 +63,15 @@ auto lightRay(point startpos, const std::vector<std::shared_ptr<object>>& scene,
 
     if (hitlight) {
       colour = colour + point(0.9, 0.9, 0.9); //point(0.8,0.1,0.8);
-      total_rays++;
     }
   }
-
 
   return colour/bounces;
 }
 
 // returns colour
-auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounces, int& total_rays) -> point {
-  std::shared_ptr<object> nearest = 0;
+auto rayCast(ray r, const std::vector<std::shared_ptr<object>> scene, int bounces) -> point {
+  auto nearest = std::weak_ptr<object>();
   hit nearesthit;
   pos_type depth = 0;
   point colour = point(0.1,0.1,0.2);
@@ -89,8 +82,9 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounc
     //Check if ray intersected
     if (objhit.intersect) {
       //Check if this new intersection is the closest to to the eye
-      //If this is the first iteratio, nearest==0 and this should run regardless
-      if (nearest==0 || objhit.depth < depth) {
+      //If this is the first iteration, nearest==false and this should run regardless
+      std::shared_ptr<object> nearest_ptr = nearest.lock();
+      if (!nearest_ptr || objhit.depth < depth) {
         //New nearest
         depth = objhit.depth;
         nearest = obj;
@@ -99,9 +93,11 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounc
     }
   }
 
-  if (nearest && nearesthit.depth >= 0.001) {
+  std::shared_ptr<object> nearest_ptr = nearest.lock();
+  if (nearest_ptr && nearesthit.depth >= 0.001) {
     //Object base colour
-    colour = nearest->colour;
+    colour = nearest_ptr->colour;
+
     // lighting ray dir
     auto startpos = nearesthit.pos + nearesthit.normal*0.01;
     point light_colour;
@@ -120,7 +116,7 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounc
       const auto diffuse = nearesthit.normal + random_dir();
 
       if constexpr(TYPE==distributed) {
-        auto light_colour = lightRay(startpos, scene, bounces+1, total_rays);
+        auto light_colour = lightRay(startpos, scene, bounces+1);
         bounces = GRID_SIZE*GRID_SIZE;
 
         for (int bounce = 0; bounce < bounces; bounce++) {
@@ -128,16 +124,16 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounc
 
           auto nr = ray(
             (nearesthit.pos + point(ray_x, ray_y, 0)) - point(0.5,0.5,0),
-            (reflection * (1-nearest->diffuse)) + (diffuse * nearest->diffuse)
+            (reflection * (1-nearest_ptr->diffuse)) + (diffuse * nearest_ptr->diffuse)
           );
-          reflection_colour = reflection_colour + rayCast(nr, scene, 0, total_rays);
-          total_rays++;
+          reflection_colour = reflection_colour + rayCast(nr, scene, 0);
         }
 
         reflection_colour = reflection_colour / bounces;
-        reflection_colour = colour*(1.0-nearest->specular) + reflection_colour*nearest->specular;
+        reflection_colour = colour*(1.0-nearest_ptr->specular)
+                            + reflection_colour*nearest_ptr->specular;
+
         colour = (colour + light_colour + reflection_colour) / 3;
-        // colour = (colour + reflection_colour + light_colour) / 3;
 
       } else if constexpr(TYPE==path) {
         // if first intersection
@@ -145,7 +141,7 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounc
           // choose reflection or shadow ray
           const bool shadow = static_cast<bool>(static_cast<int>(random_double(0,2)));
           if (shadow) {
-            light_colour = lightRay(startpos, scene, 1, total_rays);
+            light_colour = lightRay(startpos, scene, 1);
 
             colour = (colour + light_colour) / 2;
             return colour;
@@ -155,21 +151,12 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounc
 
         auto nr = ray(
           nearesthit.pos,
-          (reflection * (1-nearest->diffuse)) + (diffuse * nearest->diffuse)
-          // nearesthit.normal + (random_dir() * nearest->diffuse).norm()
-          // nearesthit.normal + random_dir()
+          (reflection * (1-nearest_ptr->diffuse)) + (diffuse * nearest_ptr->diffuse)
         );
-        total_rays++;
-        reflection_colour = reflection_colour + rayCast(nr, scene, bounces, total_rays);
-        // colour = (colour + reflection_colour) / 2;
 
-        // auto speclight = lightRay(nearesthit.pos+nearesthit.normal*0.02, scene, 1, total_rays);
-        // speclight.x = pow(speclight.x, 10.0);
-        // speclight.y = pow(speclight.y, 10.0);
-        // speclight.z = pow(speclight.z, 10.0);
-        // reflection_colour = speclight*0.5 + reflection_colour*0.5;
+        reflection_colour = reflection_colour + rayCast(nr, scene, bounces);
 
-        colour = colour*(1.0-nearest->specular) + reflection_colour*nearest->specular;
+        colour = colour*(1.0-nearest_ptr->specular) + reflection_colour*nearest_ptr->specular;
       } else {
         // bounces again correspondes to grids
         point reflection_colour;
@@ -180,8 +167,8 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounc
             (nearesthit.pos + point(ray_x, ray_y, 0)) - point(0.5,0.5,0),
             nearesthit.normal + random_dir()
           );
-          reflection_colour = reflection_colour + rayCast(nr, scene, bounces-1, total_rays);
-          total_rays++;
+
+          reflection_colour = reflection_colour + rayCast(nr, scene, bounces-1);
         }
 
         reflection_colour = reflection_colour / bounces;
@@ -192,7 +179,6 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>>& scene, int bounc
       if constexpr(TYPE==path) {
         colour = (colour + point(0.8, 0.8, 0.8)) / 2;
       }
-
     }
 
   }
