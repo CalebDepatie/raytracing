@@ -5,11 +5,12 @@
 #include <memory>
 #include <cstdlib>
 #include <cmath>
+#include <omp.h>
 
+#include "common.hpp"
 #include "ray.hpp"
 #include "objects.hpp"
 #include "EasyBMP.hpp"
-#include "common.hpp"
 
 // ray tracing in one weekend consulted for path tracing
 // https://raytracing.github.io/
@@ -72,7 +73,26 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     }
 
   } else if constexpr(EXEC==openmp) {
-    // NYI
+
+    omp_set_num_threads(12);
+
+    // collapse only valid when width == height
+    #pragma omp parallel for collapse(2)
+    for (int x = 0; x<WIDTH; x++) {
+      for (int y = 0; y<HEIGHT; y++) {
+        point pixel = point(0,0,0);
+
+        // scatter within pixel
+        for (int ray_i = 0; ray_i < INITIAL_RAYS_PER_PIXEL; ray_i++) {
+
+          const ray r = rayDir(90.0, x+random_double(-0.5,0.5), y+random_double(-0.5,0.5));
+          pixel = pixel + rayCast(r, scene, MAX_RAY_DEPTH_PER_PIXEL);
+        }
+
+        //
+        (*image)[x][y] = (pixel/(INITIAL_RAYS_PER_PIXEL))*255;
+      }
+    }
 
   } else if constexpr(EXEC==opencl) {
     // NYI
@@ -103,7 +123,28 @@ auto distTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     }
 
   } else if constexpr(EXEC==openmp) {
-    // NYI
+
+    omp_set_num_threads(12);
+
+    // collapse only valid when width == height
+    #pragma omp parallel for collapse(2)
+    for (int x = 0; x<WIDTH; x++) {
+      for (int y = 0; y<HEIGHT; y++) {
+        point pixel = point(0,0,0);
+
+        // scatter within pixel grid
+        for (int ray_i = 0; ray_i < GRID_SIZE*GRID_SIZE; ray_i++) {
+
+          const auto [ray_x, ray_y] = get_grid_value(ray_i);
+
+          const ray r = rayDir(90.0, (x+ray_x)-0.5, (y+ray_y)-0.5);
+          pixel = pixel + rayCast(r, scene, MAX_RAY_DEPTH_PER_PIXEL);
+        }
+
+        (*image)[x][y] = (pixel/(GRID_SIZE*GRID_SIZE))*255;
+      }
+    }
+
   } else if constexpr(EXEC==opencl) {
     // NYI
   }

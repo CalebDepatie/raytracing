@@ -18,6 +18,6 @@ point.o: point.hpp common.hpp point.cpp
 	$(CXX) $(CXXFLAGS) -c -o point.o point.cpp
 
 clean:
-	rm rt
 	rm *.o
 	rm *.bmp
+	rm rt

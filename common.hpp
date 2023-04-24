@@ -5,7 +5,7 @@ constexpr int WIDTH = 128*4;
 constexpr int HEIGHT = 128*4;
 
 constexpr int MAX_RAY_DEPTH_PER_PIXEL = 8; // per path is more accurate
-constexpr int INITIAL_RAYS_PER_PIXEL = 64;
+constexpr int INITIAL_RAYS_PER_PIXEL = 128;
 constexpr int GRID_SIZE = 8;
 
 enum trace_type {
@@ -20,8 +20,8 @@ enum exec_type {
   opencl
 };
 
-constexpr trace_type TYPE = path;
-constexpr exec_type EXEC = seq;
+constexpr trace_type TYPE = distributed;
+constexpr exec_type EXEC = openmp;
 
 inline constexpr auto get_grid_value(int grid_section) -> std::tuple<double, double> {
   // [[assume(grid_section < GRID_SIZE*GRID_SIZE)]]
@@ -44,6 +44,6 @@ inline auto random_double(double min, double max) -> double {
   return min + (max-min)*random_double();
 }
 
-inline constexpr auto toRad(pos_type deg) -> pos_type {
+inline constexpr auto toRad(double deg) -> double {
   return deg * 2.0 * 3.14159265358979323 / 360.0;
 }

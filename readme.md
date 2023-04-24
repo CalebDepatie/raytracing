@@ -11,9 +11,11 @@ Program was evaluated on a Ryzen 5 4600H, and GTX 1050 3GB.
 The performance testing is not rigorous and was more intended to give a general idea of the differences in speed.
 
 Path Tracing
-Using 64 rays per pixel and a max depth of 8
-Sequential: 8.868s
+Using 128 rays per pixel and a max depth of 8
+Sequential: 19.917s
+OpenMP: 17.841s
 
 Distributed Tracing
 Using an 8x8 grid and a max depth of 8
-Sequential: 292.38s
+Sequential: 301.09s
+OpenMP: 194.78s
