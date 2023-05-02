@@ -16,6 +16,8 @@ struct point {
   pos_type length() const;
   point norm() const;
 
+  point& operator+=(const point& p);
+
   friend point operator+(point p1, point p2);
   friend point operator+(point p, pos_type scalar);
   friend point operator-(point p1, point p2);
@@ -30,3 +32,5 @@ struct point {
 
 pos_type dot(const point p1, const point p2);
 point cross(const point p1, const point p2);
+
+#pragma omp declare reduction(pointAdd : point : omp_out += omp_in)

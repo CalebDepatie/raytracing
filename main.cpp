@@ -83,10 +83,12 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
         point pixel = point(0,0,0);
 
         // scatter within pixel
+        #pragma omp parallel for reduction(pointAdd : pixel)
         for (int ray_i = 0; ray_i < INITIAL_RAYS_PER_PIXEL; ray_i++) {
 
           const ray r = rayDir(90.0, x+random_double(-0.5,0.5), y+random_double(-0.5,0.5));
-          pixel = pixel + rayCast(r, scene, MAX_RAY_DEPTH_PER_PIXEL);
+
+          pixel += rayCast(r, scene, MAX_RAY_DEPTH_PER_PIXEL);
         }
 
         //
@@ -133,12 +135,13 @@ auto distTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
         point pixel = point(0,0,0);
 
         // scatter within pixel grid
+        #pragma omp parallel for reduction(pointAdd : pixel)
         for (int ray_i = 0; ray_i < GRID_SIZE*GRID_SIZE; ray_i++) {
 
           const auto [ray_x, ray_y] = get_grid_value(ray_i);
 
           const ray r = rayDir(90.0, (x+ray_x)-0.5, (y+ray_y)-0.5);
-          pixel = pixel + rayCast(r, scene, MAX_RAY_DEPTH_PER_PIXEL);
+          pixel += rayCast(r, scene, MAX_RAY_DEPTH_PER_PIXEL);
         }
 
         (*image)[x][y] = (pixel/(GRID_SIZE*GRID_SIZE))*255;

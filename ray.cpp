@@ -126,7 +126,7 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>> scene, int bounce
             (nearesthit.pos + point(ray_x, ray_y, 0)) - point(0.5,0.5,0),
             (reflection * (1-nearest_ptr->diffuse)) + (diffuse * nearest_ptr->diffuse)
           );
-          reflection_colour = reflection_colour + rayCast(nr, scene, 0);
+          reflection_colour += rayCast(nr, scene, 0);
         }
 
         reflection_colour = reflection_colour / bounces;
@@ -147,28 +147,48 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>> scene, int bounce
             return colour;
           }
         }
-        // reflection
 
+        // reflection
         auto nr = ray(
           nearesthit.pos,
           (reflection * (1-nearest_ptr->diffuse)) + (diffuse * nearest_ptr->diffuse)
         );
 
-        reflection_colour = reflection_colour + rayCast(nr, scene, bounces);
+        reflection_colour += rayCast(nr, scene, bounces);
 
         colour = colour*(1.0-nearest_ptr->specular) + reflection_colour*nearest_ptr->specular;
       } else {
+        // test tracing section
+
         // bounces again correspondes to grids
         point reflection_colour;
-        for (int bounce = 0; bounce < bounces; bounce++) {
-          const auto [ray_x, ray_y] = get_grid_value(static_cast<int>(random_double(0, (GRID_SIZE*GRID_SIZE)-1)));
 
-          auto nr = ray(
-            (nearesthit.pos + point(ray_x, ray_y, 0)) - point(0.5,0.5,0),
-            nearesthit.normal + random_dir()
-          );
+        if constexpr(EXEC == openmp) {
 
-          reflection_colour = reflection_colour + rayCast(nr, scene, bounces-1);
+          #pragma omp parallel for reduction(pointAdd : reflection_colour)
+          for (int bounce = 0; bounce < bounces; bounce++) {
+            const auto [ray_x, ray_y] = get_grid_value(static_cast<int>(random_double(0, (GRID_SIZE*GRID_SIZE)-1)));
+
+            auto nr = ray(
+              (nearesthit.pos + point(ray_x, ray_y, 0)) - point(0.5,0.5,0),
+              nearesthit.normal + random_dir()
+            );
+
+            reflection_colour += rayCast(nr, scene, bounces-1);
+          }
+
+        } else {
+
+          for (int bounce = 0; bounce < bounces; bounce++) {
+            const auto [ray_x, ray_y] = get_grid_value(static_cast<int>(random_double(0, (GRID_SIZE*GRID_SIZE)-1)));
+
+            auto nr = ray(
+              (nearesthit.pos + point(ray_x, ray_y, 0)) - point(0.5,0.5,0),
+              nearesthit.normal + random_dir()
+            );
+
+            reflection_colour += rayCast(nr, scene, bounces-1);
+          }
         }
 
         reflection_colour = reflection_colour / bounces;
