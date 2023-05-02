@@ -20,8 +20,8 @@ enum exec_type {
   opencl
 };
 
-constexpr trace_type TYPE = distributed;
-constexpr exec_type EXEC = openmp;
+constexpr trace_type TYPE = test;
+constexpr exec_type EXEC = opencl;
 
 inline constexpr auto get_grid_value(int grid_section) -> std::tuple<double, double> {
   // [[assume(grid_section < GRID_SIZE*GRID_SIZE)]]

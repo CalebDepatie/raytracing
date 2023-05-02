@@ -1,6 +1,6 @@
 CXX = g++
 
-LINK_FLAGS = -fopenmp
+LINK_FLAGS = -fopenmp -lOpenCL
 CXXFLAGS = -Wall -std=c++20 -g -O3 $(LINK_FLAGS)
 
 all: rt

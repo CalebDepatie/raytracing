@@ -1,11 +1,15 @@
+#define CL_HPP_TARGET_OPENCL_VERSION 300
+
 #include <vector>
 #include <array>
 #include <string>
 #include <iostream>
+#include <sstream>
 #include <memory>
 #include <cstdlib>
 #include <cmath>
 #include <omp.h>
+#include <CL/opencl.hpp>
 
 #include "common.hpp"
 #include "ray.hpp"
@@ -22,10 +26,37 @@ auto saveImage(array_t image) -> void;
 auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t;
 auto distTrace(std::vector<std::shared_ptr<object>> scene) -> array_t;
 
+// openCL globals
+cl::Device device;
+cl::Context context;
+
 auto main() -> int {
   // set up the scene
   const auto scene = createScene();
   array_t image;
+
+  // setup openCL
+  if constexpr(EXEC == opencl) {
+
+    std::vector<cl::Platform> platforms;
+    cl::Platform::get(&platforms);
+
+    if (platforms.size() < 1) {
+      std::cerr << "No openCL platforms detected, cannot run" << std::endl;
+      exit(-1);
+    }
+
+    std::vector<cl::Device> devices;
+    platforms[0].getDevices(CL_DEVICE_TYPE_ALL, &devices);
+
+    if (devices.size() < 1) {
+      std::cerr << "No openCL devices detected, cannot run" << std::endl;
+      exit(-1);
+    }
+
+    device = devices[0];
+    context = cl::Context(device);
+  }
 
   // tracing
   if constexpr(TYPE == path) {
@@ -41,9 +72,69 @@ auto main() -> int {
     for (int x = 0; x<WIDTH; x++) {
       for (int y = 0; y<HEIGHT; y++) {
 
-        const ray r = rayDir(90.0, x, y);
-        (*image)[x][y] = rayCast(r, scene, MAX_RAY_DEPTH_PER_PIXEL)*255;
+        // const ray r = rayDir(90.0, x, y);
+        // (*image)[x][y] = rayCast(r, scene, MAX_RAY_DEPTH_PER_PIXEL)*255;
       }
+    }
+
+    // test openCL
+    if constexpr(EXEC == opencl) {
+      // do vec_add
+      std::ifstream test_kernel("./kernels/vec_add.cl");
+      std::stringstream buf;
+      buf << test_kernel.rdbuf();
+      std::string vec_add = buf.str();
+
+      cl::Program prog(context, vec_add.c_str());
+      cl_int result = prog.build({device}, "");
+      if (result) {
+        std::cerr << "Could not build program: " << result << std::endl;
+        char build_log[4096];
+        // clGetProgramBuildInfo(prog, device, CL_PROGRAM_BUILD_LOG, sizeof(build_log), build_log, NULL);
+        prog.getBuildInfo(device, CL_PROGRAM_BUILD_LOG, build_log);
+
+        std::cout << "Build log: " << build_log << std::endl;
+
+        exit(-1);
+      }
+
+      cl::Kernel kernel(prog, "vecAdd");
+
+      const int elems = 10;
+      float arrayA[elems] = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
+      float arrayB[elems] = {0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5};
+      float arrayAB[elems] = {};
+
+      const int bufSize = elems * sizeof(cl_float);
+
+      cl::Buffer bufA(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, bufSize, arrayA);
+      cl::Buffer bufB(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, bufSize, arrayB);
+      cl::Buffer bufAB(context, CL_MEM_WRITE_ONLY, bufSize);
+
+      kernel.setArg(0, bufA);
+      kernel.setArg(1, bufB);
+      kernel.setArg(2, bufAB);
+
+      cl::CommandQueue queue(context, device);
+
+      std::size_t global_work_size = elems;
+      std::size_t local_work_size = 10;
+
+      result = queue.enqueueNDRangeKernel(kernel, 0, global_work_size, local_work_size);
+      if (result) {
+        std::cerr << "Could not enqueue Kernel: " << result << std::endl;
+        exit(-1);
+      }
+
+      result = queue.enqueueReadBuffer(bufAB, CL_TRUE, 0, bufSize, arrayAB);
+      if (result) {
+        std::cerr << "Could not enqueue read: " << result << std::endl;
+        exit(-1);
+      }
+
+      for (int i=0; i<elems; i++)
+        std::cout << arrayA[i] << " + " << arrayB[i] << " = " << arrayAB[i] << std::endl;
+
     }
   }
 
