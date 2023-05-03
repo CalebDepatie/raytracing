@@ -1,8 +1,8 @@
 #include <random>
 #include <tuple>
 
-constexpr int WIDTH = 128*4;
-constexpr int HEIGHT = 128*4;
+constexpr int WIDTH = 2;//128*4;
+constexpr int HEIGHT = 2;//128*4;
 
 constexpr int MAX_RAY_DEPTH_PER_PIXEL = 8; // per path is more accurate
 constexpr int INITIAL_RAYS_PER_PIXEL = 128;
@@ -20,7 +20,7 @@ enum exec_type {
   opencl
 };
 
-constexpr trace_type TYPE = test;
+constexpr trace_type TYPE = path;
 constexpr exec_type EXEC = opencl;
 
 inline constexpr auto get_grid_value(int grid_section) -> std::tuple<double, double> {

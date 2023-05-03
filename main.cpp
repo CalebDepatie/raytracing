@@ -15,6 +15,7 @@
 #include "ray.hpp"
 #include "objects.hpp"
 #include "EasyBMP.hpp"
+#include "clStructs.hpp"
 
 // ray tracing in one weekend consulted for path tracing
 // https://raytracing.github.io/
@@ -23,8 +24,12 @@ using array_t = std::unique_ptr<std::array<std::array<point, HEIGHT>, WIDTH>>;
 
 auto createScene() -> std::vector<std::shared_ptr<object>>;
 auto saveImage(array_t image) -> void;
+auto loadKernel(std::string file) -> std::string;
+auto checkErr(std::string ctx, cl_int err) -> void;
+auto checkBuildErr(cl::Program prog, cl_int err) -> void;
 auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t;
 auto distTrace(std::vector<std::shared_ptr<object>> scene) -> array_t;
+auto pathCL(std::vector<std::shared_ptr<object>> scene) -> array_t;
 
 // openCL globals
 cl::Device device;
@@ -80,23 +85,11 @@ auto main() -> int {
     // test openCL
     if constexpr(EXEC == opencl) {
       // do vec_add
-      std::ifstream test_kernel("./kernels/vec_add.cl");
-      std::stringstream buf;
-      buf << test_kernel.rdbuf();
-      std::string vec_add = buf.str();
+      std::string vec_add = loadKernel("./kernels/vec_add.cl");
 
       cl::Program prog(context, vec_add.c_str());
       cl_int result = prog.build({device}, "");
-      if (result) {
-        std::cerr << "Could not build program: " << result << std::endl;
-        char build_log[4096];
-        // clGetProgramBuildInfo(prog, device, CL_PROGRAM_BUILD_LOG, sizeof(build_log), build_log, NULL);
-        prog.getBuildInfo(device, CL_PROGRAM_BUILD_LOG, build_log);
-
-        std::cout << "Build log: " << build_log << std::endl;
-
-        exit(-1);
-      }
+      checkBuildErr(prog, result);
 
       cl::Kernel kernel(prog, "vecAdd");
 
@@ -121,16 +114,10 @@ auto main() -> int {
       std::size_t local_work_size = 10;
 
       result = queue.enqueueNDRangeKernel(kernel, 0, global_work_size, local_work_size);
-      if (result) {
-        std::cerr << "Could not enqueue Kernel: " << result << std::endl;
-        exit(-1);
-      }
+      checkErr("Could not enqueue Kernel: ", result);
 
       result = queue.enqueueReadBuffer(bufAB, CL_TRUE, 0, bufSize, arrayAB);
-      if (result) {
-        std::cerr << "Could not enqueue read: " << result << std::endl;
-        exit(-1);
-      }
+      checkErr("Could not enqueue read: ", result);
 
       for (int i=0; i<elems; i++)
         std::cout << arrayA[i] << " + " << arrayB[i] << " = " << arrayAB[i] << std::endl;
@@ -188,7 +175,63 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     }
 
   } else if constexpr(EXEC==opencl) {
-    // NYI
+    std::string vec_add = loadKernel("./kernels/path.cl");
+
+    cl::Program prog(context, vec_add.c_str());
+    cl_int result = prog.build({device}, "");
+    checkBuildErr(prog, result);
+
+    cl::Kernel kernel(prog, "pathTrace");
+
+    // setup kernel params
+    const int len = WIDTH*HEIGHT;
+
+    cl_float3* imageOut = (cl_float3*) malloc(len * sizeof(cl_float3));
+
+    // cl::Buffer objBuf(context, CL_MEM_READ_ONLY, 0);
+    // cl::Buffer matBuf(context, CL_MEM_READ_ONLY, 0);
+    // cl::Buffer rayBuf(context, CL_MEM_READ_WRITE, 0);
+    cl::Buffer imageBuf(context, CL_MEM_WRITE_ONLY, len*sizeof(cl_float3), NULL, &result);
+    checkErr("Could not make output buffer: ", result);
+
+    cl_int sceneLen = 0;
+    cl_int imgLen = WIDTH;
+
+    // kernel.setArg(0, objBuf);
+    // kernel.setArg(1, matBuf);
+    result = kernel.setArg(0, &sceneLen);
+    checkErr("Could not set kernel arg: ", result);
+
+    result = kernel.setArg(1, &imgLen);
+    checkErr("Could not set kernel arg: ", result);
+
+    // kernel.setArg(4, rayBuf);
+    result = kernel.setArg(2, imageBuf);
+    checkErr("Could not set kernel arg: ", result);
+
+    // execute tracing
+    cl::CommandQueue queue(context, device);
+
+    cl::NDRange global_work_size(HEIGHT,WIDTH);
+    cl::NDRange local_work_size(1,1);
+
+    result = queue.enqueueNDRangeKernel(kernel, 0, global_work_size, local_work_size);
+    checkErr("Could not enqueue Kernel: ", result);
+
+    // read and paste image
+    result = queue.enqueueReadBuffer(imageBuf, CL_TRUE, 0, len*sizeof(cl_float3), imageOut);
+    checkErr("Could not enqueue read: ", result);
+
+    for (int row=0; row<WIDTH; row++) {
+      for (int col=0; col<HEIGHT; col++) {
+        int index = row * imgLen + col;
+        (*image)[row][col].x = imageOut[index].s[0];
+        (*image)[row][col].y = imageOut[index].s[1];
+        (*image)[row][col].z = imageOut[index].s[2];
+      }
+    }
+
+    free(imageOut);
   }
 
   return image;
@@ -244,6 +287,34 @@ auto distTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
   }
 
   return image;
+}
+
+auto checkErr(std::string ctx, cl_int err) -> void {
+  if (err) {
+    std::cerr << ctx << err << std::endl;
+    exit(-1);
+  }
+}
+
+auto checkBuildErr(cl::Program prog, cl_int err) -> void {
+  if (err) {
+    std::cerr << "Could not build program: " << err << std::endl;
+    char build_log[4096];
+    prog.getBuildInfo(device, CL_PROGRAM_BUILD_LOG, build_log);
+
+    std::cerr << "Build log: " << build_log << std::endl;
+
+    exit(-1);
+  }
+}
+
+auto loadKernel(std::string file) -> std::string {
+  std::ifstream kernel_s(file);
+  std::stringstream buf;
+  buf << kernel_s.rdbuf();
+  std::string kernel_src = buf.str();
+
+  return kernel_src;
 }
 
 auto saveImage(array_t image) -> void {
