@@ -299,10 +299,11 @@ auto checkErr(std::string ctx, cl_int err) -> void {
 auto checkBuildErr(cl::Program prog, cl_int err) -> void {
   if (err) {
     std::cerr << "Could not build program: " << err << std::endl;
-    char build_log[4096];
-    prog.getBuildInfo(device, CL_PROGRAM_BUILD_LOG, build_log);
 
-    std::cerr << "Build log: " << build_log << std::endl;
+    std::string build_log = prog.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
+
+    std::cerr << "Build log:" << std::endl;
+    std::cerr << build_log << std::endl;
 
     exit(-1);
   }
