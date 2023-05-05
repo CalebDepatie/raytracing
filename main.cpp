@@ -186,37 +186,98 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     // setup kernel params
     const int len = WIDTH*HEIGHT;
 
-    cl_float3* imageOut = (cl_float3*) malloc(len * sizeof(cl_float3));
+    // construct host representations
+    cl_int sceneLen = scene.size();
 
-    // cl::Buffer objBuf(context, CL_MEM_READ_ONLY, 0);
-    // cl::Buffer matBuf(context, CL_MEM_READ_ONLY, 0);
-    // cl::Buffer rayBuf(context, CL_MEM_READ_WRITE, 0);
-    cl::Buffer imageBuf(context, CL_MEM_WRITE_ONLY, len*sizeof(cl_float3), NULL, &result);
-    checkErr("Could not make output buffer: ", result);
+    cl_Obj* objs_host = new cl_Obj[sceneLen];
+    cl_Material* mats_host = new cl_Material[sceneLen];
 
-    cl_int sceneLen = 0;
-    cl_int imgLen = WIDTH;
+    for (int i=0; i<sceneLen; i++) {
+      const auto& obj = scene[i];
 
-    // kernel.setArg(0, objBuf);
-    // kernel.setArg(1, matBuf);
-    result = kernel.setArg(0, &sceneLen);
-    checkErr("Could not set kernel arg: ", result);
+      cl_Obj new_obj;
 
-    result = kernel.setArg(1, &imgLen);
-    checkErr("Could not set kernel arg: ", result);
+      std::shared_ptr<sphere> obj_sphere = std::dynamic_pointer_cast<sphere>(obj);
+      if (obj_sphere) {
+        new_obj = cl_Obj{
+          pos: obj_sphere->centre.toFloat3(),
+          type: 1,
+          params: (cl_float3){obj_sphere->radius, 0, 0}
+        };
+      }
 
-    // kernel.setArg(4, rayBuf);
-    result = kernel.setArg(2, imageBuf);
-    checkErr("Could not set kernel arg: ", result);
+      std::shared_ptr<plane> obj_plane = std::dynamic_pointer_cast<plane>(obj);
+      if (obj_plane) {
+        new_obj = cl_Obj{
+          pos: obj_plane->vertex.toFloat3(),
+          type: 0,
+          params: obj_plane->normal.toFloat3()
+        };
+      }
+
+      cl_Material new_mat = cl_Material{
+        colour: obj->colour.toFloat3(),
+        spec: obj->specular,
+        diff: obj->diffuse
+      };
+
+      objs_host[i] = new_obj;
+      mats_host[i] = new_mat;
+    }
+
+    const cl_int raysLen = len*INITIAL_RAYS_PER_PIXEL;
+    cl_Ray* rays_host = new cl_Ray[raysLen];
+    for (int x = 0; x<WIDTH; x++) {
+      for (int y = 0; y<HEIGHT; y++) {
+
+        for (int ray_i = 0; ray_i < INITIAL_RAYS_PER_PIXEL; ray_i++) {
+
+          const ray r = rayDir(90.0, x+random_double(-0.5,0.5), y+random_double(-0.5,0.5));
+
+          cl_Ray new_ray = cl_Ray{
+            origin: r.e.toFloat3(),
+            direction: r.d.toFloat3(),
+          };
+
+          const int index = (x * WIDTH + y) * INITIAL_RAYS_PER_PIXEL + ray_i;
+
+          rays_host[index] = new_ray;
+        }
+      }
+    }
+
+    cl_float3* imageOut = new cl_float3[len];
+
+    // construct device representations
+    cl::Buffer objBuf(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+      sceneLen*sizeof(cl_Obj), objs_host);
+
+    cl::Buffer matBuf(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+      sceneLen*sizeof(cl_Material), mats_host);
+
+    cl::Buffer rayBuf(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+      raysLen*sizeof(cl_Ray), rays_host);
+
+    cl::Buffer imageBuf(context, CL_MEM_WRITE_ONLY, len*sizeof(cl_float3));
+
+    kernel.setArg(0, objBuf);
+    kernel.setArg(1, matBuf);
+    kernel.setArg(2, sceneLen);
+    kernel.setArg(3, rayBuf);
+    kernel.setArg(4, INITIAL_RAYS_PER_PIXEL);
+    kernel.setArg(5, 32743290); // random seed
+    kernel.setArg(6, imageBuf);
 
     // execute tracing
     cl::CommandQueue queue(context, device);
 
-    cl::NDRange global_work_size(HEIGHT,WIDTH);
-    cl::NDRange local_work_size(1,1);
+    auto global_work_size = len;
+    auto local_work_size = 4;
 
-    result = queue.enqueueNDRangeKernel(kernel, 0, global_work_size, local_work_size);
-    checkErr("Could not enqueue Kernel: ", result);
+    for (int i=0; i<MAX_RAY_DEPTH_PER_PIXEL; i++) {
+      result = queue.enqueueNDRangeKernel(kernel, 0, global_work_size, local_work_size);
+      checkErr("Could not enqueue Kernel: ", result);
+    }
 
     // read and paste image
     result = queue.enqueueReadBuffer(imageBuf, CL_TRUE, 0, len*sizeof(cl_float3), imageOut);
@@ -224,14 +285,16 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
 
     for (int row=0; row<WIDTH; row++) {
       for (int col=0; col<HEIGHT; col++) {
-        int index = row * imgLen + col;
+        const int index = row * WIDTH + col;
         (*image)[row][col].x = imageOut[index].s[0];
         (*image)[row][col].y = imageOut[index].s[1];
         (*image)[row][col].z = imageOut[index].s[2];
       }
     }
 
-    free(imageOut);
+    delete [] objs_host;
+    delete [] rays_host;
+    delete [] imageOut;
   }
 
   return image;

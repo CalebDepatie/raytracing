@@ -13,6 +13,14 @@ point point::norm() const {
   return *this / this->length();
 }
 
+cl_float3 point::toFloat3() const {
+  return (cl_float3){
+    this->x,
+    this->y,
+    this->z
+  };
+}
+
 point& point::operator+=(const point& p) {
   this->x += p.x;
   this->y += p.y;

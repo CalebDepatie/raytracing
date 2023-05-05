@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <CL/opencl.hpp>
 
 using pos_type = double;
 
@@ -15,6 +16,7 @@ struct point {
   pos_type length_squared() const;
   pos_type length() const;
   point norm() const;
+  cl_float3 toFloat3() const;
 
   point& operator+=(const point& p);
 
