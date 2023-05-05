@@ -66,23 +66,13 @@ rayHit intersect(Obj object, Ray r) {
   return new_hit;
 }
 
-float rand(int seed) {
-  unsigned int t = (unsigned int)seed ^ ((unsigned int) seed << 11);
-  float mid_val = (float) ((t * 0x5DEECE66DL + 0xBL) & ((1L << 48) - 1));
-  return fmod(mid_val, 10000.0f) / 10000.0f;
-}
-
-float bounded_rand(float min, float max, int seed) {
-  return min + (max-min) * rand(seed);
-}
-
-float3 random_dir(int seed) {
-  //float3 p = (float3)(bounded_rand(-1,1, seed), bounded_rand(-1,1, seed), bounded_rand(-1,1, seed));
-  float3 p = (0.5 * (seed >> 14), -0.5 * (seed << 8), 0.2 * (seed >> 4));
-  return normalize(p);
+bool isEqual(float3 a, float3 b) {
+  return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
 // -- Main Path Tracing --
+
+const float3 dead_ray = (float3)(-1.0,-1.0,-1.0);
 
 __kernel void pathTrace(
   __global Obj* scene,
@@ -90,16 +80,24 @@ __kernel void pathTrace(
   int sceneLen,
   __global Ray* rays,
   int raysPerPixel,
-  int seed,
-  __global float3* image
+  __global float3* jitter,
+  __global int* shadow,
+  __global float3* image,
+  int iter,
+  int max_depth
 ) {
   int id = get_global_id(0);
-  float3 colour = (float3)(0.1,0.1,0.2);
+  float3 colour;
+  bool firstIter = iter == 0;
 
   for (int ray_i=0; ray_i<raysPerPixel; ray_i++) {
     const int ray_id = id * raysPerPixel + ray_i;
 
     Ray cur_ray = rays[ray_id];
+
+    if (isEqual(cur_ray.origin, dead_ray)) {
+      return;
+    }
 
     rayHit nearest_hit;
     int nearest_obj_i = -1;
@@ -126,35 +124,93 @@ __kernel void pathTrace(
       Obj nearest_obj = scene[nearest_obj_i];
       Material nearest_mat = mats[nearest_obj_i];
 
-      //float3 startpos = nearest_hit.pos + nearest_hit.norm*0.01f;
+      if (ray_i == 0)
+        colour = nearest_mat.colour;
 
-      // relfection rays
-      const float fuzz = 0.8;
-      const float3 reflection = ((cur_ray.direction -
-        2*dot(cur_ray.direction, nearest_hit.norm))
-        * nearest_hit.norm)+(random_dir(seed)*fuzz);
+      if (shadow[ray_i]) { // lighting ray
+        // light runs once
+        if (firstIter) {
+          // light ray
+          float3 light_start = nearest_hit.pos + nearest_hit.norm*0.01f;
+          float3 light_end = jitter[ray_id] * 7.5f;
+          light_end.z = 40.0f;
 
-      const float3 diffuse = nearest_hit.norm + random_dir(seed);
+          Ray light_ray;
+          light_ray.origin = light_start;
+          light_ray.direction = normalize(light_end - light_start);
 
-      next_ray.origin = nearest_hit.pos;
-      next_ray.direction = normalize((reflection * (1-nearest_mat.diff)) + (diffuse * nearest_mat.diff));
+          int hitlight = 0;
+          for (int i=0; i<sceneLen; i++) {
+            Obj cur_obj = scene[i];
 
-      colour += (nearest_mat.colour*255)*(1.0f-nearest_mat.spec);// + reflection_colour*nearest_ptr->specular;
+            rayHit cur_hit = intersect(cur_obj, cur_ray);
 
+            if (cur_hit.intersect == 1) {
+              hitlight = 1;
+              break;
+            }
+          }
+
+          if (hitlight == 1) {
+            colour += ((float3)(0.9f, 0.9f, 0.9f));
+            colour /= 2;
+          }
+        }
+
+      } else {
+
+        // relfection rays
+        const float fuzz = 0.8;
+        const float3 reflection = ((cur_ray.direction -
+          2*dot(cur_ray.direction, nearest_hit.norm))
+          * nearest_hit.norm)+(normalize(jitter[ray_id])*fuzz);
+
+          const float3 diffuse = nearest_hit.norm + normalize(jitter[ray_id]);
+
+          next_ray.origin = nearest_hit.pos;
+          next_ray.direction = normalize((reflection * (1-nearest_mat.diff))
+            + (diffuse * nearest_mat.diff));
+
+          // if its the first one, we're looking directly at the object
+          if (firstIter) {
+            colour += nearest_mat.colour*(1.0f-nearest_mat.spec);
+            colour /= 2;
+
+          } else {
+            colour += (image[id]/255)*(1.0f-nearest_mat.spec) + (nearest_mat.colour) * (nearest_mat.spec);
+            colour /= 2;
+          }
+      }
+    } else { // hits nothing
+      if (firstIter) {
+        if (ray_i == 0)
+          colour = (float3)(0.1,0.1,0.2);
+        else {
+          colour += (float3)(0.1,0.1,0.2);
+          colour /= 2;
+        }
+
+      } else { // ambient lighting on reflections
+        if (ray_i == 0)
+          colour = (float3)(0.8,0.8,0.8);
+        else {
+          colour += (float3)(0.8,0.8,0.8);
+          colour /= 2;
+        }
+      }
+
+      next_ray.origin = dead_ray;
     }
 
-    rays[id] = next_ray;
+    rays[ray_id] = next_ray;
   }
-
-  // average it out
-  colour /= raysPerPixel;
 
   // update pixel
-  if (image[id][0] == 0 && image[id][1] == 0 && image[id][2] == 0) {
-    image[id] = colour;
+  float weight = (max_depth - iter) / max_depth;
+  if (firstIter) {
+    image[id] = colour*255;//((colour*255)*weight) / (1 + weight);
 
   } else {
-    image[id] = (colour + image[id]) / 2;
+    image[id] = ((colour*255)*weight + image[id]) / (1 + weight);
   }
-
 }

@@ -246,6 +246,16 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
       }
     }
 
+    cl_float3* jitter_host = new cl_float3[raysLen];
+    for (int i=0; i<raysLen; i++) {
+      jitter_host[i] = point(random_double(-1,1), random_double(-1,1), random_double(-1,1)).toFloat3();
+    }
+
+    cl_int* shadows = new cl_int[INITIAL_RAYS_PER_PIXEL];
+    for (int i=0; i<INITIAL_RAYS_PER_PIXEL; i++) {
+      shadows[i] = static_cast<int>(random_double(0,2));
+    }
+
     cl_float3* imageOut = new cl_float3[len];
 
     // construct device representations
@@ -258,6 +268,12 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     cl::Buffer rayBuf(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
       raysLen*sizeof(cl_Ray), rays_host);
 
+    cl::Buffer jitterBuf(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+      raysLen*sizeof(cl_float3), jitter_host);
+
+    cl::Buffer shadowBuf(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+      INITIAL_RAYS_PER_PIXEL*sizeof(cl_int), shadows);
+
     cl::Buffer imageBuf(context, CL_MEM_WRITE_ONLY, len*sizeof(cl_float3));
 
     kernel.setArg(0, objBuf);
@@ -265,8 +281,10 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     kernel.setArg(2, sceneLen);
     kernel.setArg(3, rayBuf);
     kernel.setArg(4, INITIAL_RAYS_PER_PIXEL);
-    kernel.setArg(5, 32743290); // random seed
-    kernel.setArg(6, imageBuf);
+    kernel.setArg(5, jitterBuf); // random seed
+    kernel.setArg(6, shadowBuf);
+    kernel.setArg(7, imageBuf);
+    kernel.setArg(9, MAX_RAY_DEPTH_PER_PIXEL);
 
     // execute tracing
     cl::CommandQueue queue(context, device);
@@ -275,6 +293,7 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     auto local_work_size = 4;
 
     for (int i=0; i<MAX_RAY_DEPTH_PER_PIXEL; i++) {
+      kernel.setArg(8, i);
       result = queue.enqueueNDRangeKernel(kernel, 0, global_work_size, local_work_size);
       checkErr("Could not enqueue Kernel: ", result);
     }
@@ -282,6 +301,8 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     // read and paste image
     result = queue.enqueueReadBuffer(imageBuf, CL_TRUE, 0, len*sizeof(cl_float3), imageOut);
     checkErr("Could not enqueue read: ", result);
+
+
 
     for (int row=0; row<WIDTH; row++) {
       for (int col=0; col<HEIGHT; col++) {
@@ -292,6 +313,8 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
       }
     }
 
+    delete [] jitter_host;
+    delete [] shadows;
     delete [] objs_host;
     delete [] rays_host;
     delete [] imageOut;
