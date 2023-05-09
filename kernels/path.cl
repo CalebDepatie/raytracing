@@ -89,6 +89,7 @@ __kernel void pathTrace(
   int id = get_global_id(0);
   float3 colour;
   bool firstIter = iter == 0;
+  int raysCount = 0;
 
   for (int ray_i=0; ray_i<raysPerPixel; ray_i++) {
     const int ray_id = id * raysPerPixel + ray_i;
@@ -124,8 +125,6 @@ __kernel void pathTrace(
       Obj nearest_obj = scene[nearest_obj_i];
       Material nearest_mat = mats[nearest_obj_i];
 
-      // if (ray_i == 0)
-      //   colour = nearest_mat.colour;
       float3 light_colour = nearest_mat.colour;
 
       if (shadow[ray_i]) { // lighting ray
@@ -185,18 +184,17 @@ __kernel void pathTrace(
           }
       }
     } else { // hits nothing
+      float3 ambient;
 
-      if (ray_i == 0)
-        colour = (float3)(0.1,0.1,0.2);
-      else {
-        colour += (float3)(0.1,0.1,0.2);
-        colour /= 2;
-      }
+      ambient = (float3)(0.1,0.1,0.2);
 
       if (!firstIter) {
-        colour += (float3)(0.8,0.8,0.8);
-        colour /= 2;
+        ambient += (float3)(0.8,0.8,0.8);
+        ambient /= 2;
       }
+
+      colour += ambient;
+      colour /= 2;
 
       next_ray.origin = dead_ray;
     }
