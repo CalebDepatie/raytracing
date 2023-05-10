@@ -97,7 +97,7 @@ __kernel void pathTrace(
     Ray cur_ray = rays[ray_id];
 
     if (isEqual(cur_ray.origin, dead_ray)) {
-      return;
+      continue;
     }
 
     rayHit nearest_hit;
@@ -125,40 +125,43 @@ __kernel void pathTrace(
       Obj nearest_obj = scene[nearest_obj_i];
       Material nearest_mat = mats[nearest_obj_i];
 
-
       if (shadow[ray_i]) { // lighting ray
 
-        // light runs once
-        if (firstIter) {
-          // light ray
-          float3 light_colour = nearest_mat.colour;
-          float3 light_start = nearest_hit.pos + nearest_hit.norm*0.01f;
-          float3 light_end = *jitter; // [-1, 1]
-          light_end.x *= 7.5f;
-          light_end.y = fabs(light_end.y) * 15.0f;
-          light_end.z = 40.0f;
+        // light ray
+        float3 light_colour = nearest_mat.colour;
+        float3 light_start = nearest_hit.pos + nearest_hit.norm*0.01f;
+        float3 light_end = jitter[ray_id]; // [-1, 1]
+        light_end.x *= 7.5f;
+        light_end.y = fabs(light_end.y) * 15.0f;
+        light_end.z = 40.0f;
 
-          Ray light_ray;
-          light_ray.origin = light_start;
-          light_ray.direction = normalize(light_end - light_start);
+        Ray light_ray;
+        light_ray.origin = light_start;
+        light_ray.direction = normalize(light_end - light_start);
 
-          for (int i=0; i<sceneLen; i++) {
-            Obj cur_obj = scene[i];
+        bool hitlight = true;
+        for (int i=0; i<sceneLen; i++) {
+          Obj cur_obj = scene[i];
 
-            rayHit cur_hit = intersect(cur_obj, cur_ray);
+          rayHit cur_hit = intersect(cur_obj, light_ray);
 
-            if (cur_hit.intersect == 0) {
+          if (cur_hit.intersect == 1) {
+            hitlight = false;
 
-              light_colour += ((float3)(0.9f, 0.9f, 0.9f));
-              light_colour /= 2;
-
-              colour += light_colour;
-              raysCount++;
-
-              break;
-            }
+            break;
           }
         }
+
+        if (hitlight) {
+          light_colour += (float3)(0.9f, 0.9f, 0.9f);
+        }
+
+        light_colour /= 2;
+        colour += light_colour;
+        raysCount++;
+
+        // light runs once
+        next_ray.origin = dead_ray;
 
       } else {
 
@@ -168,34 +171,32 @@ __kernel void pathTrace(
           2*dot(cur_ray.direction, nearest_hit.norm))
           * nearest_hit.norm)+(normalize(jitter[ray_id])*fuzz);
 
-          const float3 diffuse = nearest_hit.norm + normalize(jitter[ray_id]);
+        const float3 diffuse = nearest_hit.norm + normalize(jitter[ray_id]);
 
-          next_ray.origin = nearest_hit.pos;
-          next_ray.direction = normalize((reflection * (1-nearest_mat.diff))
-            + (diffuse * nearest_mat.diff));
+        next_ray.origin = nearest_hit.pos;
+        next_ray.direction = normalize((reflection * (1-nearest_mat.diff))
+          + (diffuse * nearest_mat.diff));
 
-          // if its the first one, we're looking directly at the object
-          float3 reflection_colour;
-          if (firstIter) {
-            reflection_colour = nearest_mat.colour*(1.0f-nearest_mat.spec);
+        // if its the first one, we're looking directly at the object
+        float3 reflection_colour;
+        if (firstIter) {
+          reflection_colour = nearest_mat.colour*(1.0f-nearest_mat.spec);
 
-          } else {
-            reflection_colour = (image[id]/255)*(1.0f-nearest_mat.spec) + (nearest_mat.colour) * (nearest_mat.spec);
-          }
+        } else {
+          reflection_colour = (image[id]/255)*(1.0f-nearest_mat.spec) + (nearest_mat.colour) * (nearest_mat.spec);
+        }
 
-          colour += reflection_colour;
-          raysCount++;
+        colour += reflection_colour;
+        raysCount++;
       }
     } else { // hits nothing
-      float3 ambient = (float3)(0.1,0.1,0.2);
+      colour += (float3)(0.1,0.1,0.2);
+      raysCount++;
 
       if (!firstIter) {
-        ambient += (float3)(0.8,0.8,0.8);
-        ambient /= 2;
+        colour += (float3)(0.8,0.8,0.8);
+        raysCount++;
       }
-
-      colour += ambient;
-      raysCount++;
 
       next_ray.origin = dead_ray;
     }
@@ -206,6 +207,18 @@ __kernel void pathTrace(
   colour /= raysCount;
 
   // update pixel
-  float weight = exp(-(iter/log((float)max_depth)));
-  image[id] = ((colour*255)*weight + image[id]*exp(-1/log((float)max_depth))) / (1 + weight*exp(-1/log((float)max_depth)));
+  // float c = 0.89;
+  // float weight = exp(-(log(iter+c)/log((float)max_depth)));
+
+  // account for only dead rays
+  if (isEqual(colour, (float3)(0.0,0.0,0.0))) {
+    return;
+  }
+
+  float weight = max_depth-iter / max_depth;
+
+  image[id] = ((colour*255) + image[id]) / 2;
+
+
+  // image[id] = ((colour*255)*weight + image[id]*exp(-1/log((float)max_depth))) / (1 + weight*exp(-1/log((float)max_depth)));
 }

@@ -154,7 +154,7 @@ auto rayCast(ray r, const std::vector<std::shared_ptr<object>> scene, int bounce
           (reflection * (1-nearest_ptr->diffuse)) + (diffuse * nearest_ptr->diffuse)
         );
 
-        reflection_colour += rayCast(nr, scene, bounces);
+        reflection_colour += rayCast(nr, scene, bounces-1);
 
         colour = colour*(1.0-nearest_ptr->specular) + reflection_colour*nearest_ptr->specular;
       } else {
