@@ -17,6 +17,7 @@ Path Tracing
 Using 128 rays per pixel and a max depth of 8  
 Sequential: 19.917s  
 OpenMP: 17.841s
+OpenCL: 5.501s
 
 Distributed Tracing  
 Using an 8x8 grid and a max depth of 8  

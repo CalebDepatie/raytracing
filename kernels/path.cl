@@ -71,9 +71,6 @@ bool isEqual(float3 a, float3 b) {
 }
 
 // -- Main Path Tracing --
-
-const float3 dead_ray = (float3)(-1.0,-1.0,-1.0);
-
 __kernel void pathTrace(
   __global Obj* scene,
   __global Material* mats,
@@ -96,10 +93,6 @@ __kernel void pathTrace(
 
     Ray cur_ray = rays[ray_id];
 
-    if (isEqual(cur_ray.origin, dead_ray)) {
-      continue;
-    }
-
     rayHit nearest_hit;
     int nearest_obj_i = -1;
 
@@ -120,7 +113,6 @@ __kernel void pathTrace(
     Ray next_ray = cur_ray;
 
     // determining colour
-
     if (nearest_obj_i != -1) {
       Obj nearest_obj = scene[nearest_obj_i];
       Material nearest_mat = mats[nearest_obj_i];
@@ -160,9 +152,6 @@ __kernel void pathTrace(
         colour += light_colour;
         raysCount++;
 
-        // light runs once
-        next_ray.origin = dead_ray;
-
       } else {
 
         // relfection rays
@@ -197,8 +186,6 @@ __kernel void pathTrace(
         colour += (float3)(0.8,0.8,0.8);
         raysCount++;
       }
-
-      next_ray.origin = dead_ray;
     }
 
     rays[ray_id] = next_ray;
@@ -206,19 +193,5 @@ __kernel void pathTrace(
 
   colour /= raysCount;
 
-  // update pixel
-  // float c = 0.89;
-  // float weight = exp(-(log(iter+c)/log((float)max_depth)));
-
-  // account for only dead rays
-  if (isEqual(colour, (float3)(0.0,0.0,0.0))) {
-    return;
-  }
-
-  float weight = max_depth-iter / max_depth;
-
   image[id] = ((colour*255) + image[id]) / 2;
-
-
-  // image[id] = ((colour*255)*weight + image[id]*exp(-1/log((float)max_depth))) / (1 + weight*exp(-1/log((float)max_depth)));
 }
