@@ -6,16 +6,15 @@
 #include <iostream>
 #include <sstream>
 #include <memory>
-#include <cstdlib>
-#include <cmath>
 #include <omp.h>
 #include <CL/opencl.hpp>
 
 #include "common.hpp"
-#include "ray.hpp"
-#include "objects.hpp"
+#include "Structures/ray.hpp"
+#include "Structures/objects.hpp"
+#include "Structures/clStructs.hpp"
+#include "trace.hpp"
 #include "EasyBMP.hpp"
-#include "clStructs.hpp"
 
 // ray tracing in one weekend consulted for path tracing
 // https://raytracing.github.io/
@@ -301,8 +300,6 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     // read and paste image
     result = queue.enqueueReadBuffer(imageBuf, CL_TRUE, 0, len*sizeof(cl_float3), imageOut);
     checkErr("Could not enqueue read: ", result);
-
-
 
     for (int row=0; row<WIDTH; row++) {
       for (int col=0; col<HEIGHT; col++) {

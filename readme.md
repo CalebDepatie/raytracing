@@ -16,7 +16,7 @@ The performance testing is not rigorous and was more intended to give a general 
 Path Tracing  
 Using 128 rays per pixel and a max depth of 8  
 Sequential: 19.917s  
-OpenMP: 17.841s
+OpenMP: 17.841s  
 OpenCL: 5.501s
 
 Distributed Tracing  
