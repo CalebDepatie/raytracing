@@ -6,16 +6,15 @@
 #include <iostream>
 #include <sstream>
 #include <memory>
-#include <cstdlib>
-#include <cmath>
 #include <omp.h>
 #include <CL/opencl.hpp>
 
 #include "common.hpp"
-#include "ray.hpp"
-#include "objects.hpp"
+#include "Structures/ray.hpp"
+#include "Structures/objects.hpp"
+#include "Structures/clStructs.hpp"
+#include "trace.hpp"
 #include "EasyBMP.hpp"
-#include "clStructs.hpp"
 
 // ray tracing in one weekend consulted for path tracing
 // https://raytracing.github.io/
