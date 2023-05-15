@@ -301,8 +301,6 @@ auto pathTrace(std::vector<std::shared_ptr<object>> scene) -> array_t {
     result = queue.enqueueReadBuffer(imageBuf, CL_TRUE, 0, len*sizeof(cl_float3), imageOut);
     checkErr("Could not enqueue read: ", result);
 
-
-
     for (int row=0; row<WIDTH; row++) {
       for (int col=0; col<HEIGHT; col++) {
         const int index = row * WIDTH + col;
